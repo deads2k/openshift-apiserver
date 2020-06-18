@@ -1,13 +1,16 @@
 package v1
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/kubernetes/pkg/apis/core"
 
 	"github.com/openshift/api/image/docker10"
 	"github.com/openshift/api/image/dockerpre012"
@@ -192,6 +195,110 @@ func Convert_image_ImageStreamStatus_To_v1_ImageStreamStatus(in *newer.ImageStre
 	return s.Convert(&in.Tags, &out.Tags, 0)
 }
 
+func Convert_api_TagEventConditionArray_to_v1_TagEventConditionArray(in *[]newer.TagEventCondition, out *[]v1.TagEventCondition, s conversion.Scope) error {
+	if *in == nil {
+		return nil
+	}
+	events := make([]v1.TagEventCondition, len(*in))
+	for i, e := range *in {
+		events[i] = v1.TagEventCondition{
+			LastTransitionTime: e.LastTransitionTime,
+			Reason:             e.Reason,
+			Message:            e.Message,
+			Generation:         e.Generation,
+		}
+
+		switch e.Status {
+		case core.ConditionTrue:
+			events[i].Status = corev1.ConditionTrue
+		case core.ConditionFalse:
+			events[i].Status = corev1.ConditionFalse
+		case core.ConditionUnknown:
+			events[i].Status = corev1.ConditionUnknown
+		default:
+			return fmt.Errorf("unknown status %s", e.Status)
+		}
+
+		switch e.Type {
+		case newer.ImportSuccess:
+			events[i].Type = v1.ImportSuccess
+		default:
+			return fmt.Errorf("unknown type %s", e.Type)
+		}
+	}
+	*out = events
+	return nil
+}
+
+func Convert_v1_TagEventConditionArray_to_api_TagEventConditionArray(in *[]v1.TagEventCondition, out *[]newer.TagEventCondition, s conversion.Scope) error {
+	if *in == nil {
+		return nil
+	}
+	events := make([]newer.TagEventCondition, len(*in))
+	for i, e := range *in {
+		events[i] = newer.TagEventCondition{
+			LastTransitionTime: e.LastTransitionTime,
+			Reason:             e.Reason,
+			Message:            e.Message,
+			Generation:         e.Generation,
+		}
+
+		switch e.Status {
+		case corev1.ConditionTrue:
+			events[i].Status = core.ConditionTrue
+		case corev1.ConditionFalse:
+			events[i].Status = core.ConditionFalse
+		case corev1.ConditionUnknown:
+			events[i].Status = core.ConditionUnknown
+		default:
+			return fmt.Errorf("unknown status %s", e.Status)
+		}
+
+		switch e.Type {
+		case v1.ImportSuccess:
+			events[i].Type = newer.ImportSuccess
+		default:
+			return fmt.Errorf("unknown type %s", e.Type)
+		}
+	}
+	*out = events
+	return nil
+}
+
+func Convert_api_TagEventArray_to_v1_TagEventArray(in *[]newer.TagEvent, out *[]v1.TagEvent, s conversion.Scope) error {
+	if *in == nil {
+		return nil
+	}
+	conditions := make([]v1.TagEvent, len(*in))
+	for i, c := range *in {
+		conditions[i] = v1.TagEvent{
+			Created:              c.Created,
+			DockerImageReference: c.DockerImageReference,
+			Image:                c.Image,
+			Generation:           c.Generation,
+		}
+	}
+	*out = conditions
+	return nil
+}
+
+func Convert_v1_TagEventArray_to_api_TagEventArray(in *[]v1.TagEvent, out *[]newer.TagEvent, s conversion.Scope) error {
+	if *in == nil {
+		return nil
+	}
+	conditions := make([]newer.TagEvent, len(*in))
+	for i, c := range *in {
+		conditions[i] = newer.TagEvent{
+			Created:              c.Created,
+			DockerImageReference: c.DockerImageReference,
+			Image:                c.Image,
+			Generation:           c.Generation,
+		}
+	}
+	*out = conditions
+	return nil
+}
+
 func Convert_v1_NamedTagEventListArray_to_api_TagEventListArray(in *[]v1.NamedTagEventList, out *map[string]newer.TagEventList, s conversion.Scope) error {
 	for _, curr := range *in {
 		newTagEventList := newer.TagEventList{}
@@ -258,6 +365,26 @@ func Convert_image_TagReferenceMap_to_v1_TagReferenceArray(in *map[string]newer.
 }
 
 func AddConversionFuncs(s *runtime.Scheme) error {
+	if err := s.AddConversionFunc((*[]newer.TagEventCondition)(nil), (*[]v1.TagEventCondition)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_api_TagEventConditionArray_to_v1_TagEventConditionArray(a.(*[]newer.TagEventCondition), b.(*[]v1.TagEventCondition), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*[]v1.TagEventCondition)(nil), (*[]newer.TagEventCondition)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1_TagEventConditionArray_to_api_TagEventConditionArray(a.(*[]v1.TagEventCondition), b.(*[]newer.TagEventCondition), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*[]newer.TagEvent)(nil), (*[]v1.TagEvent)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_api_TagEventArray_to_v1_TagEventArray(a.(*[]newer.TagEvent), b.(*[]v1.TagEvent), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*[]v1.TagEvent)(nil), (*[]newer.TagEvent)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1_TagEventArray_to_api_TagEventArray(a.(*[]v1.TagEvent), b.(*[]newer.TagEvent), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddConversionFunc((*[]v1.NamedTagEventList)(nil), (*map[string]newer.TagEventList)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1_NamedTagEventListArray_to_api_TagEventListArray(a.(*[]v1.NamedTagEventList), b.(*map[string]newer.TagEventList), scope)
 	}); err != nil {
